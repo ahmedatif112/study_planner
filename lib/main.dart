@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'database_helper.dart';
 
-// LOGIC: App start, initialise the database before the app runs
+// LOGIC: App start, initialise the database (Firebase) before the app runs
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DatabaseHelper.initDatabase();
@@ -81,8 +81,11 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // LOGIC: List of goals, each Map holds id, subject, hours, done
+  // LOGIC: List of goals, each Map holds id (text), subject, hours, done
   final List<Map<String, dynamic>> _goals = [];
+
+  // LOGIC: True while the goals are loading from the cloud
+  bool _isLoading = true;
 
   // LOGIC: Load saved goals when the screen opens
   // (initState cannot be async, so it calls a separate async function)
@@ -92,14 +95,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadGoals();
   }
 
+  // LOGIC: Show a short message at the bottom of the screen
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   // LOGIC: Read all goals from the database and show them on screen
   Future<void> _loadGoals() async {
-    final saved = await DatabaseHelper.getGoals();
-    if (!mounted) return;
-    setState(() {
-      _goals.clear();
-      _goals.addAll(saved);
-    });
+    try {
+      final saved = await DatabaseHelper.getGoals();
+      if (!mounted) return;
+      setState(() {
+        _goals.clear();
+        _goals.addAll(saved);
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      _showMessage('Could not load goals. Check your internet connection.');
+    }
   }
 
   // LOGIC: Total hours of all goals (fold starts from 0 and adds each goal)
@@ -123,39 +141,58 @@ class _HomeScreenState extends State<HomeScreen> {
     // LOGIC: Ignore the result if the user pressed back (result is null)
     if (result == null) return;
 
-    // LOGIC: Insert into the database, then store the returned id in the list
-    final int newId = await DatabaseHelper.insertGoal(result);
-    result['id'] = newId;
+    try {
+      // LOGIC: Insert into the database, then store the returned id in the list
+      final String newId = await DatabaseHelper.insertGoal(result);
+      result['id'] = newId;
 
-    if (!mounted) return;
-    setState(() {
-      _goals.add(result);
-    });
+      if (!mounted) return;
+      setState(() {
+        _goals.add(result);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage('Could not save the goal. Check your internet connection.');
+    }
   }
 
   // LOGIC: Flip the done value in the database and on screen
   Future<void> _toggleGoal(int index) async {
-    final int id = _goals[index]['id'];
+    final String id = _goals[index]['id'];
     final bool newDone = !_goals[index]['done'];
 
-    await DatabaseHelper.updateGoal(id, newDone);
+    try {
+      await DatabaseHelper.updateGoal(id, newDone);
 
-    if (!mounted) return;
-    setState(() {
-      _goals[index]['done'] = newDone;
-    });
+      if (!mounted) return;
+      setState(() {
+        _goals[index]['done'] = newDone;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(
+        'Could not update the goal. Check your internet connection.',
+      );
+    }
   }
 
   // LOGIC: Remove the goal from the database and from the screen
   Future<void> _deleteGoal(int index) async {
-    final int id = _goals[index]['id'];
+    final String id = _goals[index]['id'];
 
-    await DatabaseHelper.deleteGoal(id);
+    try {
+      await DatabaseHelper.deleteGoal(id);
 
-    if (!mounted) return;
-    setState(() {
-      _goals.removeAt(index);
-    });
+      if (!mounted) return;
+      setState(() {
+        _goals.removeAt(index);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _showMessage(
+        'Could not delete the goal. Check your internet connection.',
+      );
+    }
   }
 
   @override
@@ -215,9 +252,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
 
-            // STATIC: Empty message or the goal list
+            // STATIC: Spinner, empty message, or the goal list
             Expanded(
-              child: _goals.isEmpty
+              child: _isLoading
+                  // STATIC: Spinner while goals load from the cloud
+                  ? const Center(child: CircularProgressIndicator())
+                  : _goals.isEmpty
                   // STATIC: Friendly message when the list is empty
                   ? const Center(
                       child: Text(
@@ -236,7 +276,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // STATIC: One goal card
                         return Card(
                           child: ListTile(
-                            // CONNECTION 2: UI calls LOGIC functions on actions
+                            // CONNECTION 2: UI calls LOGIC functions
                             onTap: () => _toggleGoal(index),
                             leading: Checkbox(
                               value: isDone,

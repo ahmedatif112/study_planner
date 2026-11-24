@@ -1,78 +1,60 @@
-import 'package:path/path.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 // LOGIC: All database code lives in this file (not mixed into the widgets)
 class DatabaseHelper {
-  // LOGIC: Holds the open database so we open it only once
-  static Database? _database;
+  // LOGIC: The "goals" collection in Cloud Firestore
+  // (a getter, so Firebase is only touched after initDatabase has run)
+  static CollectionReference<Map<String, dynamic>> get _goalsCollection =>
+      FirebaseFirestore.instance.collection('goals');
 
-  // LOGIC: Open (or create) goals.db and create the goals table
-  static Future<Database> initDatabase() async {
-    if (_database != null) return _database!;
-
-    // Combine the databases folder with the file name using join()
-    final String dbPath = await getDatabasesPath();
-    final String path = join(dbPath, 'goals.db');
-
-    _database = await openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE goals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject TEXT,
-            hours INTEGER,
-            done INTEGER
-          )
-        ''');
-      },
-    );
-    return _database!;
+  // LOGIC: Connect the app to Firebase (called once when the app starts)
+  static Future<void> initDatabase() async {
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
   }
 
-  // LOGIC: Save a goal and return its new id
-  static Future<int> insertGoal(Map<String, dynamic> goal) async {
-    final db = await initDatabase();
-    return await db.insert('goals', {
+  // LOGIC: Save a goal and return its new id (a text id made by Firestore)
+  static Future<String> insertGoal(Map<String, dynamic> goal) async {
+    final DocumentReference<Map<String, dynamic>> doc =
+        await _goalsCollection.add({
       'subject': goal['subject'],
       'hours': goal['hours'],
-      // bool (Dart) -> int (SQLite): true = 1, false = 0
-      'done': goal['done'] == true ? 1 : 0,
+      // Firestore stores true/false directly, no 1/0 conversion needed
+      'done': goal['done'] == true,
+      // Server time, used to keep goals in the order they were added
+      'createdAt': FieldValue.serverTimestamp(),
     });
+    return doc.id;
   }
 
   // LOGIC: Return all saved goals as a list of Maps
   static Future<List<Map<String, dynamic>>> getGoals() async {
-    final db = await initDatabase();
-    final List<Map<String, dynamic>> rows =
-        await db.query('goals', orderBy: 'id ASC');
+    final QuerySnapshot<Map<String, dynamic>> snapshot =
+        await _goalsCollection.orderBy('createdAt').get();
 
-    return rows.map((row) {
+    return snapshot.docs.map((doc) {
+      final Map<String, dynamic> data = doc.data();
       return {
-        'id': row['id'],
-        'subject': row['subject'],
-        'hours': row['hours'],
-        // int (SQLite) -> bool (Dart): compare to 1
-        'done': row['done'] == 1,
+        'id': doc.id,
+        'subject': data['subject'],
+        'hours': (data['hours'] as num).toInt(),
+        'done': data['done'] == true,
       };
     }).toList();
   }
 
   // LOGIC: Change the done value of one goal
-  static Future<void> updateGoal(int id, bool done) async {
-    final db = await initDatabase();
-    await db.update(
-      'goals',
-      {'done': done ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+  static Future<void> updateGoal(String id, bool done) async {
+    await _goalsCollection.doc(id).update({'done': done});
   }
 
   // LOGIC: Remove one goal
-  static Future<void> deleteGoal(int id) async {
-    final db = await initDatabase();
-    await db.delete('goals', where: 'id = ?', whereArgs: [id]);
+  static Future<void> deleteGoal(String id) async {
+    await _goalsCollection.doc(id).delete();
   }
 }
