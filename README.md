@@ -76,6 +76,18 @@ pubspec.yaml            Dependencies
 
 Note: `sqflite` does not run on Chrome or Windows desktop, so use an Android device or emulator.
 
+## Group Information
+
+**Group number:** 15
+
+| No. | Registration Number |
+|-----|---------------------|
+| 1 | 24454/2024 |
+| 2 | 26022/2024 |
+| 3 | 28249/2024 |
+| 4 | 26487/2024 |
+| 5 | 26447/2024 |
+
 ## Author
 
-Ahmed Atif Abdalla (GitHub: [ahmedatif112](https://github.com/ahmedatif112))
+Ahmed Atif Abdalla : 24454/2024 (GitHub: [ahmedatif112](https://github.com/ahmedatif112))
